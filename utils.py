@@ -30,12 +30,17 @@ def plot_learning_curve(x, scores, filename, avg_human, avg_random, avg_best_lin
     plt.savefig(filename)
 
 
-def make_env(env_name, human=False):
+def plot_loss(losses, filename):
+    plt.plot(losses)
+    plt.savefig(filename)
+
+
+def make_env(env_name, human=False, frameskip=1):
     # we create game environment
     if human:
-        env = gym.make(env_name, render_mode="human", full_action_space=False, frameskip=1)
+        env = gym.make(env_name, render_mode="human", full_action_space=False, frameskip=frameskip)
     else:
-        env = gym.make(env_name, full_action_space=False, frameskip=1)
+        env = gym.make(env_name, render_mode="rgb_array", full_action_space=False, frameskip=frameskip)
     # chose "better" frame
     env = TakeMaxFrame(env)
     # resize our observation
@@ -174,7 +179,7 @@ class ReplayBuffer(object):
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, input_shape: int, buffer_size: int, batch_size: int = 32,
-                 alpha: float = 0.6, n_step: int = 1, gamma: float = 0.99):
+                 alpha: float = 0.5, n_step: int = 1, gamma: float = 0.99):
         super(PrioritizedReplayBuffer, self).__init__(
             input_shape, buffer_size, batch_size, n_step, gamma
         )

@@ -10,7 +10,7 @@ class RainbowDQNAgent(object):
     def __init__(self, env, buffer_size, batch_size, replace=1000, gamma=0.99, lr=0.0001,
                  alpha=0.5, beta=0.4, prior_eps=1e-6,
                  v_min=-10.0, v_max=10.0, atom_size=51, n_step=3,
-                 algo=None, env_name=None, chkpt_dir='tmp/dqn', pres=False):
+                 algo=None, env_name=None, chkpt_dir='tmp/dqn', pres=False, model_name_add=""):
         self.chkpt_dir = chkpt_dir
 
         input_dims = env.observation_space.shape
@@ -37,10 +37,10 @@ class RainbowDQNAgent(object):
         self.atom_size = atom_size
         self.support = torch.linspace(self.v_min, self.v_max, self.atom_size).to(self.device)
 
-        eval_name = algo + "_" + env_name + "_dqn"
+        eval_name = algo + "_" + env_name + "_dqn" + model_name_add
         self.dqn = RainbowDQNNetwork(input_dims, n_actions, self.atom_size, self.support, eval_name, self.chkpt_dir).to(self.device)
 
-        next_name = algo + "_" + env_name + "_dqn_target"
+        next_name = algo + "_" + env_name + "_dqn_target" + model_name_add
         self.dqn_target = RainbowDQNNetwork(input_dims, n_actions, self.atom_size, self.support, next_name, self.chkpt_dir).to(self.device)
         self.dqn_target.load_state_dict(self.dqn.state_dict())
         self.dqn_target.eval()
@@ -49,12 +49,25 @@ class RainbowDQNAgent(object):
 
         self.transition = list()
 
+        self.max_lives = 0
+        self.life_prev = 0
+        self.terminate_on_life_lose = False
+        self.force_fire = False
+        self.no_fire_ctr = 0
         self.is_test = pres
+
+        self.first_gain = True
+        self.stolen = 0
 
     def select_action(self, state):
         # NoisyNet: no epsilon greedy action selection
         selected_action = self.dqn(torch.FloatTensor(np.array(state)).to(self.device)).argmax()
         selected_action = selected_action.detach().cpu().numpy()
+        if self.force_fire and selected_action != 1:
+            self.no_fire_ctr += 1
+            if self.no_fire_ctr > 100:
+                selected_action = 1
+                self.no_fire_ctr = 0
 
         if not self.is_test:
             self.transition = [state, selected_action]
@@ -68,7 +81,14 @@ class RainbowDQNAgent(object):
         return action
 
     def step(self, action: np.ndarray):
-        next_state, reward, done, _, _ = self.env.step(action)
+        next_state, reward, done, _, info = self.env.step(action)
+        if self.terminate_on_life_lose:
+            if info['lives'] != self.max_lives:
+                done = True
+            if self.first_gain:
+                self.stolen += reward
+                reward = 0
+                self.first_gain = False
 
         if not self.is_test:
             self.transition += [reward, next_state, done]
@@ -117,10 +137,15 @@ class RainbowDQNAgent(object):
 
         return loss.item()
 
-    def train(self, num_steps, eps_better):
+    def train(self, num_steps, eps_better, terminate_on_life_lose=False, force_fire=False):
         self.is_test = False
+        self.terminate_on_life_lose = terminate_on_life_lose
+        self.force_fire = force_fire
 
-        state, _ = self.env.reset()
+        state, info = self.env.reset()
+        self.max_lives = info['lives']
+        self.life_prev = info['lives']
+
         update_cnt = 0
         losses = []
         scores = []
@@ -146,7 +171,7 @@ class RainbowDQNAgent(object):
                 avg_score = np.mean(scores[-100:])
                 print('episode: ', episode_counter, 'score: ', score,
                       ' average score %.1f' % avg_score, 'best score %.2f' % best_score,
-                      'episode loss %.2f' % (sum(losses) / max(len(losses), 1)), 'steps', frame_idx)
+                      'episode loss %.5f' % (sum(losses) / max(len(losses), 1)), 'steps', frame_idx)
                 if avg_score > best_score + eps_better and frame_idx > 50000:
                     self.save_models()
                     best_score = avg_score
@@ -157,6 +182,10 @@ class RainbowDQNAgent(object):
                 episode_counter += 1
                 losses = []
 
+                score += self.stolen
+                self.stolen = 0
+                self.first_gain = True
+
             # if training is ready
             if len(self.memory) >= self.batch_size and frame_idx > 20000:
                 loss = self.update_model()
@@ -166,6 +195,8 @@ class RainbowDQNAgent(object):
                 # if hard update is needed
                 if update_cnt % self.replace == 0:
                     self._target_hard_update()
+            if frame_idx % 10000 == 0:
+                self.save_models_named('most_recent')
         self.env.close()
         return scores, steps_list, losses
 
@@ -219,7 +250,16 @@ class RainbowDQNAgent(object):
         self.dqn.save_checkpoint()
         self.dqn_target.save_checkpoint()
 
+    def save_models_named(self, name):
+        self.dqn.save_checkpoint_named(name)
+        self.dqn_target.save_checkpoint_named(name)
+
     #load models
     def load_models(self):
         self.dqn.load_checkpoint()
         self.dqn_target.load_checkpoint()
+
+    def load_models_named(self, name):
+        self.dqn.load_checkpoint_named(name)
+        self.dqn_target.load_checkpoint_named(name)
+

@@ -131,6 +131,14 @@ class RainbowDQNNetwork(nn.Module):
         print('... saving checkpoint ...')
         torch.save(self.state_dict(), self.checkpoint_file)
 
+    def save_checkpoint_named(self, name):
+        print('... saving checkpoint ...')
+        torch.save(self.state_dict(), self.checkpoint_file + '_' + name)
+
     def load_checkpoint(self):
         print('... loading checkpoint ...')
         self.load_state_dict(torch.load(self.checkpoint_file))
+
+    def load_checkpoint_named(self, name):
+        print('... loading checkpoint ...')
+        self.load_state_dict(torch.load(self.checkpoint_file + '_' + name))

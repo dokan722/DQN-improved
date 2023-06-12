@@ -1,16 +1,16 @@
 import numpy as np
 import time
 from RainbowDQNAgent import RainbowDQNAgent
-from utils import plot_learning_curve, make_env
+from utils import plot_learning_curve, make_env, plot_loss
 
-env = make_env("BreakoutNoFrameskip-v4")
-env_name = "BreakoutNoFrameskip-v4"
-max_n_steps = 500000
+env = make_env("StarGunnerNoFrameskip-v4")
+env_name = "StarGunnerNoFrameskip-v4"
+max_n_steps = 1000000
 algo = "RainbowDQN"
 eps_better = 50
-avg_human = 35411
-avg_random = 10781
-avg_best_linear = 23411
+avg_human = 10250
+avg_random = 664
+avg_best_linear = 1070
 
 
 # env = make_env("PongNoFrameskip-v4")
@@ -40,11 +40,14 @@ agent = RainbowDQNAgent(env=env, buffer_size=50000, batch_size=32, algo=algo, en
 
 plot_name = algo + '_' + env_name + '_' + str(max_n_steps) + 'steps'
 figure_file = 'plots/' + plot_name + '.png'
+loss_file = 'plots/' + plot_name + '_loss.png'
 
-scores, steps, losses = agent.train(max_n_steps, eps_better)
+scores, steps, losses = agent.train(max_n_steps, eps_better, force_fire=True)
 
 
 plot_learning_curve(steps, scores, figure_file, avg_human, avg_random, avg_best_linear)
+
+plot_loss(losses, loss_file)
 
 end = time.time()
 
